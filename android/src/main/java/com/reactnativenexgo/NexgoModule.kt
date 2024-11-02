@@ -14,6 +14,9 @@ import com.nexgo.oaf.apiv3.device.printer.AlignEnum
 import com.nexgo.oaf.apiv3.device.printer.BarcodeFormatEnum
 import com.nexgo.oaf.apiv3.device.printer.OnPrintListener
 import com.nexgo.oaf.apiv3.device.printer.Printer
+import com.nexgo.oaf.apiv3.device.printer.DotMatrixFontEnum;
+import com.nexgo.oaf.apiv3.device.printer.FontEntity;
+import com.nexgo.oaf.apiv3.device.printer.LineOptionEntity;
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -24,101 +27,110 @@ class NexgoModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
   private var deviceEngine: DeviceEngine? = null
   private var printer: Printer? = null
 
+  private val fontXS = FontEntity(DotMatrixFontEnum.ASC_SONG_6X12)
+  private val fontS = FontEntity(DotMatrixFontEnum.ASC_SONG_8X16)
+  private val fontM = FontEntity(DotMatrixFontEnum.ASC_SONG_12X24)
+  private val fontL = FontEntity(DotMatrixFontEnum.ASC_SONG_BOLD_16X24)
+  private val fontXL = FontEntity(DotMatrixFontEnum.ASC_SONG_BOLD_16X32)
+
+  private val lineOption = LineOptionEntity.Builder().setUnderline(false).setMarginLeft(0).setZoomX(false).setZoomY(false).setBold(false).build()
+
   override fun getName(): String {
     return "Nexgo"
   }
 
   @RequiresApi(Build.VERSION_CODES.O)
   @ReactMethod
-  fun printReceipt(
-   receipt: ReadableMap,
-   promise: Promise){
-
+  fun init(
+    promise: Promise) {
     try {
       //Initialize the SDK components
       deviceEngine = APIProxy.getDeviceEngine(reactApplicationContext)
       printer = deviceEngine?.printer
 
-
       //Initialize the printer
       printer?.initPrinter()
 
-      // Get printer status from getStatus()
-      when (val initResult: Int? = printer?.status) {  // same is printer?.getStatus()
-        SdkResult.Success -> {
-          printMerchantSummary(
-            receipt,
-            ""
-          )
-        }
-
-        SdkResult.Printer_PaperLack -> {
-          promise.resolve("Printer is out of paper")
-          Toast.makeText(reactApplicationContext, "Out of Paper!", Toast.LENGTH_LONG).show()
-        }
-        else -> {
-          promise.resolve( "Printer Init Misc Error: $initResult")
-          Toast.makeText(reactApplicationContext, "Printer Init Misc Error: $initResult", Toast.LENGTH_LONG).show()
-        }
-      }
-
+      promise.resolve(true);
     } catch (e : Exception){
-      promise.reject("PRINT_RECEIPT_ERROR", e)
+      promise.reject("PRINTER_INIT_ERROR", e)
     }
   }
 
   @RequiresApi(Build.VERSION_CODES.O)
-  private fun printMerchantSummary(
-   receipt: ReadableMap,
-   base64encodedImage: String
-  ){
-    try {
-      // initialize date
-      val current  = LocalDateTime.now()
-
-      val formatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
-      val formatted = current.format(formatter)
-
-      //Add start of the receipt text on top of receipt
-      printer?.appendPrnStr("***** MERCHANT COPY *****",26, AlignEnum.CENTER, true)
-
-      // Company Logo
-      val receiptLogo: Bitmap? = stringToBitMap(base64encodedImage)
-      if (receiptLogo != null) {
-        printer?.appendImage(
-          receiptLogo,
-          AlignEnum.CENTER
-        )
-      }
-      // End Logo to the receipt
-
-      // Checkout Details
-      val receiptMap = receipt.toHashMap() // convert readable map to hashmap
-
-      for((key, value) in receiptMap) {
-        printer?.appendPrnStr(key,value.toString(), 24, false)
-      }
-      // Time
-      printer?.appendPrnStr("Date",formatted.toString(),24,false)
-
-      // End of receipt
-      printer?.appendPrnStr("--- END OF LEGAL RECEIPT ---",26, AlignEnum.CENTER, true)
-
-      //Start the print job
-      printer?.startPrint(true, this)
-    } catch (e : Exception){
-      Log.e(TAG, "printMerchantSummary: ", e)
-    }
-
+  @ReactMethod
+  fun printText(
+    text: String,
+    fontSize: Int,
+    alignment: Int,
+    isBold: Boolean,
+    promise: Promise
+  ) {
+    printer?.appendPrnStr(text, this.getFont(fontSize), this.getAlignment(alignment), lineOption)
+    promise.resolve(true)
   }
 
+  @RequiresApi(Build.VERSION_CODES.O)
+  @ReactMethod
+  fun printSpacedAround(
+    textLeft: String,
+    textRight: String,
+    fontSize: Int,
+    promise: Promise
+  ) {
+    printer?.appendPrnStr(textLeft, textRight, this.getFont(fontSize))
+    promise.resolve(true)
+  }
 
-  private fun stringToBitMap(encodedString: String?): Bitmap? {
-    return try {
-      val encodeByte: ByteArray = Base64.decode(encodedString, Base64.DEFAULT)
-      BitmapFactory.decodeByteArray(encodeByte, 0, encodeByte.size)
+  @RequiresApi(Build.VERSION_CODES.O)
+  @ReactMethod
+  fun printQR(
+    text: String,
+    size: Int,
+    moduleSize: Int,
+    promise: Promise
+  ) {
+    try {
+      printer?.appendQRcode(
+          text,
+          size,
+          moduleSize,
+          3,
+          AlignEnum.CENTER
+      )
+      promise.resolve(true)
     } catch (e: Exception) {
-      null
+      promise.reject("PRINT_QR_ERROR", e)
+    }
+  }
+
+  @RequiresApi(Build.VERSION_CODES.O)
+  @ReactMethod
+  fun execute(promise: Promise) {
+    try {
+        printer?.startPrint(true, this)
+    } catch (e: Exception) {
+        promise.reject("PRINT_EXECUTION_ERROR", e)
+    }
+  }
+
+  private fun getAlignment(value: Int): AlignEnum {
+    return when (value) {
+      0 -> AlignEnum.LEFT
+      1 -> AlignEnum.CENTER
+      2 -> AlignEnum.RIGHT
+      else -> AlignEnum.LEFT
+    }
+  }
+
+  private fun getFont(value: Int): FontEntity {
+    return when (value) {
+      12 -> this.fontXS
+      16 -> this.fontS
+      24 -> this.fontM
+      28 -> this.fontL
+      32 -> this.fontXL
+      else -> this.fontM
     }
   }
 
@@ -136,5 +148,4 @@ class NexgoModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
       else -> Log.e(TAG, "Generic Fail Error: $resultCode")
     }
   }
-
 }

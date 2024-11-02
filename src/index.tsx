@@ -17,8 +17,36 @@ const Nexgo = NativeModules.Nexgo
       }
     );
 
-export function printReceipt(
-  recieptContent: RecieptConfigurations
-): Promise<any> {
-  return Nexgo.printReceipt(recieptContent);
+export function init(): Promise<boolean> {
+  return Nexgo.init();
 }
+
+export function printText(
+  text: string,
+  fontSize: number,
+  alignment: number,
+  something: boolean,
+): Promise<any> {
+  return Nexgo.printText(text, fontSize, alignment, something);
+}
+
+export function printSpacedAround(
+  textLeft: string,
+  textRight: string,
+  fontSize: number,
+): Promise<any> {
+  return Nexgo.printSpacedAround(textLeft, textRight, fontSize);
+}
+
+export function printQR(
+  text: string,
+  size: number,
+  moduleSize: number,
+): Promise<any> {
+  return Nexgo.printQR(text, size, moduleSize);
+}
+
+export function execute(): Promise<boolean> {
+  return Nexgo.execute();
+}
+
